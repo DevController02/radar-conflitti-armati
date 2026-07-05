@@ -4,6 +4,7 @@ import os
 import datetime
 import random
 import re
+import traceback  # <-- IL NOSTRO DETECTIVE AGGIUNTO
 
 # 1. Connessione sicura tramite GitHub Secrets
 try:
@@ -11,12 +12,13 @@ try:
     creds_dict = json.loads(os.environ["GCP_CREDENTIALS"])
     client = gspread.service_account_from_dict(creds_dict)
     
-    # INSERISCI QUI L'ID DEL TUO FOGLIO GOOGLE
+    # Il tuo ID corretto
     ID_FOGLIO = "1UDCmPyNqsWRSIBTmo6UYNBkqMg3FiJ4sdgmdY1e22G4" 
     foglio = client.open_by_key(ID_FOGLIO).sheet1
     print("✅ Connessione al database avvenuta con successo.")
 except Exception as e:
-    print(f"❌ Errore di connessione: {e}")
+    print("❌ ERRORE CRITICO DETTAGLIATO:")
+    traceback.print_exc()  # <-- QUESTO FORZERÀ LA STAMPA DEL VERO ERRORE
     exit(1)
 
 # 2. Sistema di Analisi

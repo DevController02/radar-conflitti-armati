@@ -12,7 +12,7 @@ try:
     client = gspread.service_account_from_dict(creds_dict)
     
     # INSERISCI QUI L'ID DEL TUO FOGLIO GOOGLE
-    ID_FOGLIO = "INSERISCI_QUI_IL_TUO_ID" 
+    ID_FOGLIO = "1UDCmPyNqsWRSIBTmo6UYNBkqMg3FiJ4sdgmdY1e22G4" 
     foglio = client.open_by_key(ID_FOGLIO).sheet1
     print("✅ Connessione al database avvenuta con successo.")
 except Exception as e:

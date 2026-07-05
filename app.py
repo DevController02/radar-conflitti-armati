@@ -8,7 +8,7 @@ st.set_page_config(page_title="Radar Conflitti", layout="wide")
 st.title("🌍 Radar OSINT: Monitoraggio Conflitti Armati")
 st.markdown("Dashboard in tempo reale per il monitoraggio di violazioni in zone di conflitto.")
 
-# INSERISCI IL TUO LINK CSV PUBBLICATO (il link che finisce con &output=csv)
+# INSERISCI QUI IL TUO LINK CSV PUBBLICATO
 SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTIPelNU3xgAcJyfEs4FeqXofRMfECbIcncm6S9prheQzezaP-R2uRHQUHQ4OGKj-vPrGC2Ss0XWS8I/pub?gid=0&single=true&output=csv"
 
 @st.cache_data(ttl=60)
@@ -22,8 +22,7 @@ def carica_dati():
             df = df.iloc[:, :5] 
             df.columns = ["Bersaglio", "Vittime", "Latitudine", "Longitudine", "Paese"]
             
-            # --- PULIZIA DATI (Risoluzione errore virgole) ---
-            # Trasformiamo in stringhe, sostituiamo la virgola con il punto, convertiamo in numeri
+            # PULIZIA DATI (virgola -> punto)
             for col in ['Latitudine', 'Longitudine']:
                 df[col] = df[col].astype(str).str.replace(',', '.')
                 df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -44,7 +43,7 @@ df = carica_dati()
 if not df.empty:
     st.subheader("Mappa Topografica degli Attacchi")
     
-    # Creazione mappa con OpenTopoMap (fisica + città)
+    # Creazione mappa
     mappa = folium.Map(location=[20.0, 30.0], zoom_start=3, tiles='OpenTopoMap')
     
     for _, row in df.iterrows():
@@ -72,8 +71,3 @@ if not df.empty:
     st.dataframe(df, use_container_width=True)
 else:
     st.warning("In attesa di dati validi dal database. Verifica che lo script su GitHub sia attivo.")
-
-# Diagramma del flusso dati per capire come arrivano le informazioni
-
-
-[Image of data pipeline process]

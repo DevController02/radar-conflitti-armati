@@ -7,7 +7,7 @@ st.set_page_config(page_title="Radar Conflitti", layout="wide")
 st.title("🌍 Radar OSINT: Crimini di Guerra")
 
 # INSERISCI QUI IL TUO LINK CSV
-SHEET_CSV_URL = "INSERISCI_IL_LINK_CSV_QUI"
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTIPelNU3xgAcJyfEs4FeqXofRMfECbIcncm6S9prheQzezaP-R2uRHQUHQ4OGKj-vPrGC2Ss0XWS8I/pub?gid=0&single=true&output=csv"
 
 @st.cache_data(ttl=60)
 def carica_dati():

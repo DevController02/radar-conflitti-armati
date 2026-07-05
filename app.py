@@ -43,8 +43,14 @@ df = carica_dati()
 if not df.empty:
     st.subheader("Mappa Topografica degli Attacchi")
     
-    # Creazione mappa
-    mappa = folium.Map(location=[20.0, 30.0], zoom_start=3, tiles='OpenTopoMap')
+    # Creazione mappa satellitare ad alta risoluzione (Esri World Imagery)
+    mappa = folium.Map(
+        location=[20.0, 30.0], 
+        zoom_start=3, 
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri World Imagery'
+    )
+    
     
     for _, row in df.iterrows():
         popup_html = f"""

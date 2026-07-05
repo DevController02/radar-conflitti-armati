@@ -43,12 +43,14 @@ df = carica_dati()
 if not df.empty:
     st.subheader("Mappa Topografica degli Attacchi")
     
-    # Creazione mappa satellitare ad alta risoluzione (Esri World Imagery)
+    # Creazione mappa: Satellitare Ibrida (Google Maps con etichette e confini)
     mappa = folium.Map(
         location=[20.0, 30.0], 
         zoom_start=3, 
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attr='Esri World Imagery'
+        tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+        attr='Google Maps'
+    )
+    
     )
     
     

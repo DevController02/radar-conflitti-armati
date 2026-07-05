@@ -1,0 +1,40 @@
+import streamlit as st
+import pandas as pd
+import folium
+from streamlit_folium import st_folium
+
+st.set_page_config(page_title="Radar Conflitti", layout="wide")
+st.title("🌍 Radar OSINT: Crimini di Guerra")
+
+# INSERISCI IL LINK CSV PUBBLICATO DEL TUO FOGLIO GOOGLE
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTIPelNU3xgAcJyfEs4FeqXofRMfECbIcncm6S9prheQzezaP-R2uRHQUHQ4OGKj-vPrGC2Ss0XWS8I/pub?gid=0&single=true&output=csv"
+
+@st.cache_data(ttl=60)
+def carica_dati():
+    try:
+        df = pd.read_csv(SHEET_CSV_URL)
+        df.columns = ["Bersaglio", "Vittime", "Latitudine", "Longitudine", "Paese"]
+        return df
+    except Exception as e:
+        return pd.DataFrame()
+
+df = carica_dati()
+
+if not df.empty:
+    st.subheader("Mappa Topografica degli Attacchi")
+    # Mappa fisica e satellitare
+    mappa = folium.Map(location=[30.0, 35.0], zoom_start=3, tiles='OpenTopoMap')
+    
+    for _, row in df.iterrows():
+        popup_html = f"<b>{row['Paese']}</b><br>Bersaglio: {row['Bersaglio']}<br>Vittime: {row['Vittime']}"
+        folium.CircleMarker(
+            location=[row['Latitudine'], row['Longitudine']],
+            radius=5 + (row['Vittime'] * 0.5),
+            popup=folium.Popup(popup_html, max_width=200),
+            color="red", fill=True, fill_opacity=0.7
+        ).add_to(mappa)
+        
+    st_folium(mappa, width=1000, height=500)
+    st.dataframe(df, use_container_width=True)
+else:
+    st.warning("In attesa di dati.")

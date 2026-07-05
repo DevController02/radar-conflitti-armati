@@ -1,6 +1,6 @@
 streamlit
 pandas
-folium
-streamlit-folium
-feedparser
 pydeck
+gspread
+oauth2client
+feedparser

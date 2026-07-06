@@ -15,9 +15,10 @@ creds_dict = json.loads(creds_json)
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
 client = gspread.authorize(creds)
 
-# ATTENZIONE: Inserisci qui il nome esatto del tuo file Google Sheets
-NOME_FOGLIO = "1UDCmPyNqsWRSIBTmo6UYNBkqMg3FiJ4sdgmdY1e22G4"
-sheet = client.open(NOME_FOGLIO).sheet1
+# Sostituisci la vecchia logica con l'ID univoco
+ID_FOGLIO = "1UDCmPyNqsWRSIBTmo6UYNBkqMg3FiJ4sdgmdY1e22G4"
+sheet = client.open_by_key(ID_FOGLIO).sheet1
+
 
 # --- 2. FONTI OSINT UMANITARIE ---
 FONTI_RSS = {

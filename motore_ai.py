@@ -1,26 +1,37 @@
+import os
+import json
 import feedparser
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import json
-import os
 import re
 import time
-from datetime import datetime
+
+print("Avvio del Motore AI OSINT Avanzato...")
 
 # --- 1. CONFIGURAZIONE GOOGLE SHEETS ---
-print("Avvio connessione a Google Sheets...")
-SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds_json = os.environ.get("GOOGLE_CREDENTIALS")
-creds_dict = json.loads(creds_json)
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
-client = gspread.authorize(creds)
+try:
+    print("Autenticazione con Google Cloud...")
+    SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+    
+    if not creds_json:
+        raise ValueError("Variabile d'ambiente GOOGLE_CREDENTIALS non trovata. Controlla i Secrets di GitHub!")
 
-# Sostituisci la vecchia logica con l'ID univoco
-ID_FOGLIO = "1UDCmPyNqsWRSIBTmo6UYNBkqMg3FiJ4sdgmdY1e22G4"
-sheet = client.open_by_key(ID_FOGLIO).sheet1
+    creds_dict = json.loads(creds_json)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
+    client = gspread.authorize(creds)
+
+    # Il tuo ID foglio originale blindato
+    ID_FOGLIO = "1UDCmPyNqsWRSIBTmo6UYNBkqMg3FiJ4sdgmdY1e22G4"
+    sheet = client.open_by_key(ID_FOGLIO).sheet1
+    print("Connessione al database avvenuta con successo!")
+
+except Exception as e:
+    print(f"Errore critico di connessione: {e}")
+    exit(1)
 
 
-# --- 2. FONTI OSINT UMANITARIE ---
+# --- 2. FONTI RSS UMANITARIE ---
 FONTI_RSS = {
     "ReliefWeb (ONU)": "https://reliefweb.int/updates/rss.xml",
     "Amnesty International": "https://www.amnesty.org/en/rss/",
@@ -28,66 +39,83 @@ FONTI_RSS = {
     "UN News": "https://news.un.org/feed/subscribe/en/news/all/rss.xml"
 }
 
-# --- 3. DATABASE GEOGRAFICO DI BASE ---
+# --- 3. FILTRO CINETICO (Solo eventi armati/bellici) ---
+PAROLE_CHIAVE_CONFLITTO = [
+    "attack", "killed", "strike", "bombing", "clash", "gunfire", 
+    "offensive", "casualties", "dead", "armed", "drone", "missile", 
+    "explosion", "ambush", "raid", "terrorist", "assassination",
+    "vittime", "morti", "uccisi", "conflict"
+]
+
+# --- 4. DATABASE GEOGRAFICO DI BASE ---
 COORDINATE = {
-    "Syria": [34.8, 38.9], "Siria": [34.8, 38.9],
-    "Sudan": [12.8, 30.2],
-    "Ukraine": [48.3, 31.1], "Ucraina": [48.3, 31.1],
-    "Gaza": [31.5, 34.4], "Palestine": [31.5, 34.4],
-    "Yemen": [15.5, 48.5],
-    "Myanmar": [21.9, 95.9],
-    "Congo": [-4.0, 21.7],
-    "Somalia": [5.1, 46.1],
-    "Lebanon": [33.8, 35.5], "Libano": [33.8, 35.5]
+    "syria": {"lat": 34.8, "lon": 38.9, "paese": "Syria"},
+    "siria": {"lat": 34.8, "lon": 38.9, "paese": "Syria"},
+    "sudan": {"lat": 12.8, "lon": 30.2, "paese": "Sudan"},
+    "ukraine": {"lat": 48.3, "lon": 31.1, "paese": "Ukraine"},
+    "ucraina": {"lat": 48.3, "lon": 31.1, "paese": "Ukraine"},
+    "gaza": {"lat": 31.5, "lon": 34.4, "paese": "Palestine"},
+    "palestine": {"lat": 31.5, "lon": 34.4, "paese": "Palestine"},
+    "yemen": {"lat": 15.5, "lon": 48.5, "paese": "Yemen"},
+    "myanmar": {"lat": 21.9, "lon": 95.9, "paese": "Myanmar"},
+    "congo": {"lat": -4.0, "lon": 21.7, "paese": "Congo"},
+    "somalia": {"lat": 5.1, "lon": 46.1, "paese": "Somalia"},
+    "lebanon": {"lat": 33.8, "lon": 35.5, "paese": "Lebanon"},
+    "libano": {"lat": 33.8, "lon": 35.5, "paese": "Lebanon"}
 }
 
-# --- 4. FUNZIONE DI ESTRAZIONE DATI ---
-def estrai_dati_notizia(titolo, sommario):
+
+# --- 5. FUNZIONE DI FILTRAGGIO ED ESTRAZIONE DATI ---
+def analizza_notizia(titolo, sommario):
     testo_completo = (titolo + " " + sommario).lower()
     
-    paese_trovato = None
-    lat, lon = None, None
-    for paese, coords in COORDINATE.items():
-        if paese.lower() in testo_completo:
-            paese_trovato = paese
-            lat, lon = coords
+    # A. RICERCA PAESE E COORDINATE
+    lat, lon, paese_trovato = None, None, None
+    for chiave_paese, dati_geo in COORDINATE.items():
+        if chiave_paese in testo_completo:
+            lat = dati_geo["lat"]
+            lon = dati_geo["lon"]
+            paese_trovato = dati_geo["paese"]
             break
             
     if not paese_trovato:
-        return None
+        return None # Nessun paese conosciuto rilevato
         
-    parole_conflitto = ['killed', 'dead', 'casualties', 'attack', 'strike', 'vittime', 'morti', 'uccisi', 'conflict']
-    if not any(parola in testo_completo for parola in parole_conflitto):
-        return None
+    # B. FILTRO CINETICO (Riduzione drastica del rumore diplomatico)
+    if not any(parola in testo_completo for parola in PAROLE_CHIAVE_CONFLITTO):
+        return None # È solo diplomazia o una conferenza, ignoriamo
         
-    match_vittime = re.search(r'(\d+)\s*(people|civilians|killed|dead|vittime|morti)', testo_completo)
-    vittime = int(match_vittime.group(1)) if match_vittime else 2 
+    # C. ESTRAZIONE VITTIME REALE (Se non trova numeri, mette 0, addio al trucco del "2")
+    vittime = 0
+    match_vittime = re.search(r'(\d+)\s*(people|civilians|killed|dead|vittime|morti|casualties|fatalities)', testo_completo)
+    if match_vittime:
+        vittime = int(match_vittime.group(1))
     
     return {
-        "titolo": titolo[:50] + "...", 
+        "titolo": titolo[:70] + "..." if len(titolo) > 70 else titolo, 
         "vittime": vittime, 
         "lat": lat, 
         "lon": lon, 
         "paese": paese_trovato
     }
 
-# --- 5. IL MOTORE CON CROSS-REFERENCING ---
-print("Inizio scansione delle fonti umanitarie e Cross-Referencing...")
 
-# Buffer di attesa: raggruppa le notizie per Paese
-# Struttura: { "Sudan": {"fonti": set(), "dati_migliori": {...}} }
+# --- 6. APPLICAZIONE LOGICA CROSS-REFERENCING ---
+print("Inizio scansione delle fonti con verifica incrociata...")
+
+# Raggruppiamo gli eventi rilevati per Paese in questo ciclo
 buffer_eventi = {}
 
-# FASE A: Raccolta Dati (Popoliamo il Buffer)
+# FASE 1: Lettura dei feed e popolamento del buffer
 for nome_fonte, url_feed in FONTI_RSS.items():
-    print(f"Lettura da: {nome_fonte}")
+    print(f"Scansione in corso su: {nome_fonte}")
     feed = feedparser.parse(url_feed)
     
-    for entry in feed.entries[:10]:
+    for entry in feed.entries[:15]:  # Analizziamo gli ultimi 15 articoli per fonte
         titolo = getattr(entry, 'title', '')
         sommario = getattr(entry, 'summary', '')
         
-        dati = estrai_dati_notizia(titolo, sommario)
+        dati = analizza_notizia(titolo, sommario)
         
         if dati:
             paese = dati["paese"]
@@ -100,27 +128,27 @@ for nome_fonte, url_feed in FONTI_RSS.items():
                     "lon": dati["lon"]
                 }
             
-            # Aggiungiamo la fonte all'elenco di chi ha segnalato l'evento
+            # Registriamo quale agenzia ha segnalato o confermato questo fronte
             buffer_eventi[paese]["fonti_confermanti"].add(nome_fonte)
             
-            # Teniamo il numero di vittime più alto segnalato tra le fonti
+            # Aggiorniamo il bilancio delle vittime se un'altra fonte riporta un dato più accurato/alto
             if dati["vittime"] > buffer_eventi[paese]["vittime_max"]:
                 buffer_eventi[paese]["vittime_max"] = dati["vittime"]
 
-# FASE B: Validazione (Cross-Referencing) e Inserimento
-titoli_esistenti = sheet.col_values(1)
-nuovi_inserimenti = 0
+# FASE 2: Validazione incrociata e scrittura su Google Sheets
+titoli_esistenti = sheet.col_values(1)  # Carica lo storico per evitare doppioni
+nuove_righe = []
 
-print("\n--- Analisi Incrociata dei Dati ---")
+print("\n--- Fase Analisi Incrociata e Intelligence ---")
 for paese, info in buffer_eventi.items():
     numero_fonti = len(info["fonti_confermanti"])
     nomi_fonti = ", ".join(info["fonti_confermanti"])
     
-    # REGOLA D'ORO OSINT: Almeno 2 fonti diverse per confermare!
+    # REGOLA D'ORO: Conferma valida sul radar solo con almeno 2 fonti indipendenti!
     if numero_fonti >= 2:
-        print(f"✅ EVENTO CONFERMATO in {paese} da {numero_fonti} fonti ({nomi_fonti})")
+        print(f"✅ EVENTO CINETICO CONFERMATO in [{paese}] da {numero_fonti} fonti: ({nomi_fonti})")
         
-        # Prepariamo la riga per Google Sheets
+        # Struttura colonne Excel standard: titolo, vittime, lat, lon, paese
         nuova_riga = [
             info["titolo_principale"],
             info["vittime_max"],
@@ -129,20 +157,25 @@ for paese, info in buffer_eventi.items():
             paese
         ]
         
-        # Controllo Anti-Duplicati Storici
+        # Controllo anti-duplicato storico
         if info["titolo_principale"] not in titoli_esistenti:
-            try:
-                sheet.append_row(nuova_riga)
-                titoli_esistenti.append(info["titolo_principale"])
-                nuovi_inserimenti += 1
-                print(f"   -> Salvato nel database.")
-                time.sleep(2) # Evita il blocco per le API di Google
-            except Exception as e:
-                print(f"   -> Errore di salvataggio: {e}")
+            nuove_righe.append(nuova_riga)
+            titoli_esistenti.append(info["titolo_principale"])
+            print(f"   -> Approvato e preparato per l'inserimento sul radar.")
         else:
-            print(f"   -> Già presente nel database storico, ignorato.")
+            print(f"   -> Ignorato: Evento identico già registrato nel database storico.")
     else:
-        print(f"❌ Evento SCARTATO in {paese}. Segnalato solo da 1 fonte ({nomi_fonti}). Attendibilità insufficiente.")
+        print(f"❌ Evento SCARTATO in [{paese}]. Attendibilità insufficiente: registrato solo da '{nomi_fonti}'.")
 
-print(f"\nScansione completata. Aggiunti {nuovi_inserimenti} nuovi eventi validati.")
-    
+# FASE 3: Aggiornamento massivo del database
+if nuove_righe:
+    try:
+        print(f"\nScrittura in corso di {len(nuove_righe)} righe filtrate nel database Google Sheets...")
+        sheet.append_rows(nuove_righe)
+        print("Database aggiornato con successo!")
+    except Exception as e:
+        print(f"Errore durante la scrittura su Google Sheets: {e}")
+else:
+    print("\nNessun nuovo evento cinetico ha superato il controllo incrociato in questo ciclo.")
+
+print("\nOperazione completata. Il motore OSINT torna in modalità ascolto.")

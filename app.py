@@ -33,7 +33,7 @@ def carica_dati():
         df = pd.DataFrame(dati[1:], columns=["titolo", "vittime", "lat", "lon", "paese"])
         
         # Trasformiamo i dati in numeri veri e propri
-        df['vittime'] = pd.to_numeric(df['vittime'], errors='coerce').fillna(2)
+        df['vittime'] = pd.to_numeric(df['vittime'], errors='coerce').fillna(0)
         df['lat'] = pd.to_numeric(df['lat'], errors='coerce')
         df['lon'] = pd.to_numeric(df['lon'], errors='coerce')
         

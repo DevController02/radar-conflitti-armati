@@ -81,20 +81,26 @@ else:
         bearing=0
     )
 
-    # Creiamo i classici pallini rossi
+   # 1. Definiamo i colori basati sulla fonte
+    def assegna_colore(fonte):
+        if "CONFERMATO" in fonte:
+            return [255, 0, 0]  # ROSSO (ACLED)
+        else:
+            return [255, 165, 0] # ARANCIONE (RSS)
+
+    # 2. Applichiamo la funzione alla colonna 'Fonte'
+    df['colore'] = df['Fonte'].apply(assegna_colore)
+
+    # 3. Creiamo il layer con i colori dinamici
     layer_pallini = pdk.Layer(
         "ScatterplotLayer",
         data=df,
         get_position=["Lon", "Lat"],
-        get_radius=50000, # Grandezza base del cerchio in metri
-        radius_min_pixels=5, # Grandezza minima sullo schermo
-        radius_max_pixels=30, # Grandezza massima quando fai zoom
-        get_fill_color=[255, 50, 50, 200], # Rosso radar trasparente
-        get_line_color=[255, 0, 0, 255], # Bordo rosso acceso
-        line_width_min_pixels=1,
-        stroked=True,
+        get_color="colore",  # Usa la colonna colore che abbiamo appena creato
+        get_radius=50000,    # Raggio del pallino
         pickable=True,
         auto_highlight=True,
+    )
     )
 
     # Uniamo il satellite Mapbox con i pallini e creiamo i popup

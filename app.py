@@ -100,7 +100,7 @@ else:
         get_radius=50000,    # Raggio del pallino
         pickable=True,
         auto_highlight=True,
-    )
+    
     )
 
     # Uniamo il satellite Mapbox con i pallini e creiamo i popup

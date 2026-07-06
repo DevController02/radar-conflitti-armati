@@ -15,11 +15,31 @@ MAPBOX_KEY = st.secrets["MAPBOX_API_KEY"]
 # --- FUNZIONE DI CARICAMENTO DATI ---
 @st.cache_data(ttl=60)
 def carica_dati():
-    # Connessione a Google Sheets usando i segreti di Streamlit
+    # Connessione a Google Sheets
     SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
     client = gspread.authorize(creds)
+    
+    ID_FOGLIO = "1UDCmPyNqsWRSIBTmo6UYNBkqMg3FiJ4sdgmdY1e22G4"
+    sheet = client.open_by_key(ID_FOGLIO).sheet1
+    
+    dati = sheet.get_all_values()
+    
+    if len(dati) > 1:
+        # Ora definiamo correttamente tutte le 8 colonne che hai nel foglio
+        df = pd.DataFrame(dati[1:], columns=["ID_Univoco", "Data", "Titolo", "Vittime", "Lat", "Lon", "Paese", "Fonte"])
+        
+        # Trasformiamo i dati in numeri
+        df['Vittime'] = pd.to_numeric(df['Vittime'], errors='coerce').fillna(0)
+        df['Lat'] = pd.to_numeric(df['Lat'], errors='coerce')
+        df['Lon'] = pd.to_numeric(df['Lon'], errors='coerce')
+        
+        # Puliamo le righe vuote
+        df = df.dropna(subset=['Lat', 'Lon'])
+        return df
+    else:
+        return pd.DataFrame()
     
     # INSERISCI QUI IL TUO ID ALFANUMERICO TRA LE VIRGOLETTE
     ID_FOGLIO = "1UDCmPyNqsWRSIBTmo6UYNBkqMg3FiJ4sdgmdY1e22G4"

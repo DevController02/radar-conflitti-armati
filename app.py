@@ -85,7 +85,7 @@ else:
     layer_pallini = pdk.Layer(
         "ScatterplotLayer",
         data=df,
-        get_position=["lon", "lat"],
+        get_position=["Lon", "Lat"],
         get_radius=50000, # Grandezza base del cerchio in metri
         radius_min_pixels=5, # Grandezza minima sullo schermo
         radius_max_pixels=30, # Grandezza massima quando fai zoom

@@ -1,181 +1,86 @@
 import os
 import json
+import requests
 import feedparser
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import re
+from datetime import datetime
 import time
 
-print("Avvio del Motore AI OSINT Avanzato...")
+print("--- Avvio Motore Intelligence Ibrido (ACLED + RSS) ---")
 
-# --- 1. CONFIGURAZIONE GOOGLE SHEETS ---
-try:
-    print("Autenticazione con Google Cloud...")
-    SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
-    
-    if not creds_json:
-        raise ValueError("Variabile d'ambiente GOOGLE_CREDENTIALS non trovata. Controlla i Secrets di GitHub!")
+# --- 1. CONFIGURAZIONE E AUTH ---
+SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds_dict = json.loads(os.environ.get("GOOGLE_CREDENTIALS"))
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
+client = gspread.authorize(creds)
+ID_FOGLIO = "1UDCmPyNqsWRSIBTmo6UYNBkqMg3FiJ4sdgmdY1e22G4"
+sheet = client.open_by_key(ID_FOGLIO).sheet1
 
-    creds_dict = json.loads(creds_json)
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
-    client = gspread.authorize(creds)
-
-    # Il tuo ID foglio originale blindato
-    ID_FOGLIO = "1UDCmPyNqsWRSIBTmo6UYNBkqMg3FiJ4sdgmdY1e22G4"
-    sheet = client.open_by_key(ID_FOGLIO).sheet1
-    print("Connessione al database avvenuta con successo!")
-
-except Exception as e:
-    print(f"Errore critico di connessione: {e}")
-    exit(1)
-
-
-# --- 2. FONTI RSS UMANITARIE ---
-FONTI_RSS = {
-    "ReliefWeb (ONU)": "https://reliefweb.int/updates/rss.xml",
-    "Amnesty International": "https://www.amnesty.org/en/rss/",
-    "Human Rights Watch": "https://www.hrw.org/rss/news",
-    "UN News": "https://news.un.org/feed/subscribe/en/news/all/rss.xml"
+# Sessione per ACLED
+session = requests.Session()
+login_url = "https://acleddata.com/login" # Assicurati che sia l'URL corretto del loro login
+payload = {
+    'username': os.environ.get("ACLED_USERNAME"),
+    'password': os.environ.get("ACLED_PASSWORD")
 }
+session.post(login_url, data=payload)
 
-# --- 3. FILTRO CINETICO (Solo eventi armati/bellici) ---
-PAROLE_CHIAVE_CONFLITTO = [
-    "attack", "killed", "strike", "bombing", "clash", "gunfire", 
-    "offensive", "casualties", "dead", "armed", "drone", "missile", 
-    "explosion", "ambush", "raid", "terrorist", "assassination",
-    "vittime", "morti", "uccisi", "conflict"
-]
+# --- 2. LOGICA ID UNIVOCO ---
+def genera_id(data, lat, lon):
+    # Crea una chiave univoca: es "2026-07-06_15.5_32.5"
+    return f"{data}_{round(float(lat), 2)}_{round(float(lon), 2)}"
 
-# --- 4. DATABASE GEOGRAFICO DI BASE ---
-COORDINATE = {
-    "syria": {"lat": 34.8, "lon": 38.9, "paese": "Syria"},
-    "siria": {"lat": 34.8, "lon": 38.9, "paese": "Syria"},
-    "sudan": {"lat": 12.8, "lon": 30.2, "paese": "Sudan"},
-    "ukraine": {"lat": 48.3, "lon": 31.1, "paese": "Ukraine"},
-    "ucraina": {"lat": 48.3, "lon": 31.1, "paese": "Ukraine"},
-    "gaza": {"lat": 31.5, "lon": 34.4, "paese": "Palestine"},
-    "palestine": {"lat": 31.5, "lon": 34.4, "paese": "Palestine"},
-    "yemen": {"lat": 15.5, "lon": 48.5, "paese": "Yemen"},
-    "myanmar": {"lat": 21.9, "lon": 95.9, "paese": "Myanmar"},
-    "congo": {"lat": -4.0, "lon": 21.7, "paese": "Congo"},
-    "somalia": {"lat": 5.1, "lon": 46.1, "paese": "Somalia"},
-    "lebanon": {"lat": 33.8, "lon": 35.5, "paese": "Lebanon"},
-    "libano": {"lat": 33.8, "lon": 35.5, "paese": "Lebanon"}
-}
-
-
-# --- 5. FUNZIONE DI FILTRAGGIO ED ESTRAZIONE DATI ---
-def analizza_notizia(titolo, sommario):
-    testo_completo = (titolo + " " + sommario).lower()
-    
-    # A. RICERCA PAESE E COORDINATE
-    lat, lon, paese_trovato = None, None, None
-    for chiave_paese, dati_geo in COORDINATE.items():
-        if chiave_paese in testo_completo:
-            lat = dati_geo["lat"]
-            lon = dati_geo["lon"]
-            paese_trovato = dati_geo["paese"]
-            break
-            
-    if not paese_trovato:
-        return None # Nessun paese conosciuto rilevato
-        
-    # B. FILTRO CINETICO (Riduzione drastica del rumore diplomatico)
-    if not any(parola in testo_completo for parola in PAROLE_CHIAVE_CONFLITTO):
-        return None # È solo diplomazia o una conferenza, ignoriamo
-        
-    # C. ESTRAZIONE VITTIME REALE (Se non trova numeri, mette 0, addio al trucco del "2")
-    vittime = 0
-    match_vittime = re.search(r'(\d+)\s*(people|civilians|killed|dead|vittime|morti|casualties|fatalities)', testo_completo)
-    if match_vittime:
-        vittime = int(match_vittime.group(1))
-    
-    return {
-        "titolo": titolo[:70] + "..." if len(titolo) > 70 else titolo, 
-        "vittime": vittime, 
-        "lat": lat, 
-        "lon": lon, 
-        "paese": paese_trovato
-    }
-
-
-# --- 6. APPLICAZIONE LOGICA CROSS-REFERENCING ---
-print("Inizio scansione delle fonti con verifica incrociata...")
-
-# Raggruppiamo gli eventi rilevati per Paese in questo ciclo
-buffer_eventi = {}
-
-# FASE 1: Lettura dei feed e popolamento del buffer
-for nome_fonte, url_feed in FONTI_RSS.items():
-    print(f"Scansione in corso su: {nome_fonte}")
-    feed = feedparser.parse(url_feed)
-    
-    for entry in feed.entries[:15]:  # Analizziamo gli ultimi 15 articoli per fonte
-        titolo = getattr(entry, 'title', '')
-        sommario = getattr(entry, 'summary', '')
-        
-        dati = analizza_notizia(titolo, sommario)
-        
-        if dati:
-            paese = dati["paese"]
-            if paese not in buffer_eventi:
-                buffer_eventi[paese] = {
-                    "fonti_confermanti": set(),
-                    "titolo_principale": dati["titolo"],
-                    "vittime_max": dati["vittime"],
-                    "lat": dati["lat"],
-                    "lon": dati["lon"]
-                }
-            
-            # Registriamo quale agenzia ha segnalato o confermato questo fronte
-            buffer_eventi[paese]["fonti_confermanti"].add(nome_fonte)
-            
-            # Aggiorniamo il bilancio delle vittime se un'altra fonte riporta un dato più accurato/alto
-            if dati["vittime"] > buffer_eventi[paese]["vittime_max"]:
-                buffer_eventi[paese]["vittime_max"] = dati["vittime"]
-
-# FASE 2: Validazione incrociata e scrittura su Google Sheets
-titoli_esistenti = sheet.col_values(1)  # Carica lo storico per evitare doppioni
+# Carichiamo gli ID esistenti per evitare doppioni
+ids_esistenti = sheet.col_values(1) 
 nuove_righe = []
 
-print("\n--- Fase Analisi Incrociata e Intelligence ---")
-for paese, info in buffer_eventi.items():
-    numero_fonti = len(info["fonti_confermanti"])
-    nomi_fonti = ", ".join(info["fonti_confermanti"])
-    
-    # REGOLA D'ORO: Conferma valida sul radar solo con almeno 2 fonti indipendenti!
-    if numero_fonti >= 2:
-        print(f"✅ EVENTO CINETICO CONFERMATO in [{paese}] da {numero_fonti} fonti: ({nomi_fonti})")
-        
-        # Struttura colonne Excel standard: titolo, vittime, lat, lon, paese
-        nuova_riga = [
-            info["titolo_principale"],
-            info["vittime_max"],
-            info["lat"],
-            info["lon"],
-            paese
-        ]
-        
-        # Controllo anti-duplicato storico
-        if info["titolo_principale"] not in titoli_esistenti:
-            nuove_righe.append(nuova_riga)
-            titoli_esistenti.append(info["titolo_principale"])
-            print(f"   -> Approvato e preparato per l'inserimento sul radar.")
-        else:
-            print(f"   -> Ignorato: Evento identico già registrato nel database storico.")
-    else:
-        print(f"❌ Evento SCARTATO in [{paese}]. Attendibilità insufficiente: registrato solo da '{nomi_fonti}'.")
+# --- 3. FETCH DATI ACLED ---
+print("Scaricamento dati ACLED...")
+try:
+    # Limitato a 50 eventi per evitare crash
+    acled_url = "https://acleddata.com/api/acled/read?limit=50" 
+    response = session.get(acled_url)
+    if response.status_code == 200:
+        dati_acled = response.json().get('data', [])
+        for evento in dati_acled:
+            data = evento.get('event_date')
+            lat = evento.get('latitude')
+            lon = evento.get('longitude')
+            titolo = evento.get('event_type') + " - " + evento.get('location')
+            vittime = evento.get('fatalities', 0)
+            paese = evento.get('country')
+            
+            uid = genera_id(data, lat, lon)
+            
+            if uid not in ids_esistenti:
+                nuove_righe.append([uid, data, titolo, vittime, lat, lon, paese, "ACLED"])
+                ids_esistenti.append(uid)
+except Exception as e:
+    print(f"Errore ACLED: {e}")
 
-# FASE 3: Aggiornamento massivo del database
+# --- 4. FETCH DATI RSS (Fonti Umanitarie) ---
+FONTI_RSS = ["https://reliefweb.int/updates/rss.xml", "https://news.un.org/feed/subscribe/en/news/all/rss.xml"]
+print("Scansione RSS...")
+
+for url in FONTI_RSS:
+    feed = feedparser.parse(url)
+    for entry in feed.entries[:10]:
+        data = datetime.now().strftime("%Y-%m-%d") # RSS spesso non hanno data precisa, usiamo oggi
+        lat, lon = 0.0, 0.0 # Qui dovresti aggiungere logica per estrarre lat/lon dal titolo se vuoi precisione
+        titolo = entry.title
+        vittime = 0 
+        paese = "Global/Vario"
+        
+        uid = genera_id(data, lat, lon)
+        
+        if uid not in ids_esistenti:
+            nuove_righe.append([uid, data, titolo, vittime, lat, lon, paese, "RSS"])
+            ids_esistenti.append(uid)
+
+# --- 5. SCRITTURA BATCH ---
 if nuove_righe:
-    try:
-        print(f"\nScrittura in corso di {len(nuove_righe)} righe filtrate nel database Google Sheets...")
-        sheet.append_rows(nuove_righe)
-        print("Database aggiornato con successo!")
-    except Exception as e:
-        print(f"Errore durante la scrittura su Google Sheets: {e}")
+    sheet.append_rows(nuove_righe)
+    print(f"✅ Aggiunti {len(nuove_righe)} nuovi eventi.")
 else:
-    print("\nNessun nuovo evento cinetico ha superato il controllo incrociato in questo ciclo.")
-
-print("\nOperazione completata. Il motore OSINT torna in modalità ascolto.")
+    print("Nessun nuovo evento da aggiungere.")

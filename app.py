@@ -64,17 +64,31 @@ else:
         bearing=0
     )
 
-    # Creiamo i pilastri rossi tridimensionali
-    layer_colonne = pdk.Layer(
-        "ColumnLayer",
+        # Creiamo i classici pallini rossi piatti al posto delle colonne
+    layer_pallini = pdk.Layer(
+        "ScatterplotLayer", # Il comando magico per i cerchi piatti
         data=df,
         get_position=["lon", "lat"],
-        get_elevation="vittime",
-        elevation_scale=100000, # Regola l'altezza dei pilastri
-        radius=50000,           # Regola lo spessore alla base
+        get_radius=50000, # Il raggio base del cerchio in metri
+        radius_min_pixels=5, # Grandezza minima sullo schermo
+        radius_max_pixels=30, # Grandezza massima quando fai zoom
         get_fill_color=[255, 50, 50, 200], # Colore rosso radar trasparente
+        get_line_color=[255, 0, 0, 255], # Bordo rosso acceso
+        line_width_min_pixels=1,
+        stroked=True,
         pickable=True,
         auto_highlight=True,
+    )
+
+    # Assicurati di aggiornare anche la variabile dentro il Deck!
+    deck = pdk.Deck(
+        layers=[layer_pallini], # <-- Modifica qui inserendo layer_pallini
+        initial_view_state=view_state,
+        map_style="mapbox://styles/mapbox/satellite-streets-v12", 
+        api_keys={"mapbox": MAPBOX_KEY},
+        tooltip={"text": "📍 {paese}\n\nEvento: {titolo}\n⚠️ Vittime stimate: {vittime}"}
+    )
+    
     )
 
     # Uniamo il satellite Mapbox con i nostri dati e creiamo i popup al passaggio del mouse

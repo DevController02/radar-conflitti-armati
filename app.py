@@ -89,3 +89,8 @@ else:
     # Proiettiamo sulla dashboard (Questa era la riga dove era rimasta la parentesi di troppo!)
     st.pydeck_chart(deck)
     
+min_date = st.sidebar.date_input("Data inizio", value=pd.to_datetime("2026-01-01"))
+max_date = st.sidebar.date_input("Data fine")
+# Filtra il df
+df = df[(df['Data'] >= str(min_date)) & (df['Data'] <= str(max_date))]
+st.dataframe(df) # Ecco la tua tabella!

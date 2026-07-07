@@ -7,16 +7,27 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import re
 
-print("--- Avvio Radar OSINT Globale (Con Scudo Anti-Calamità Naturali) ---")
+print("--- Avvio Radar OSINT Globale (Con Scudo Anti-Calamità e Burocrazia) ---")
 
-# --- LISTA NERA: SCUDO ANTI-DISASTRI E ANTI-INCIDENTI ---
+# --- LISTA NERA: SCUDO ANTI-DISASTRI, ANTI-BUROCRAZIA E MULTILINGUA ---
 # Qualsiasi notizia che contenga una di queste parole verrà scartata immediatamente.
 PAROLE_VIETATE = [
+    # Disastri Naturali (Inglese)
     "quake", "earthquake", "tsunami", "flood", "hurricane", "storm", "cyclone", "typhoon", "tornado",
     "landslide", "mudslide", "volcano", "eruption", "wildfire", "fire", "accident", "crash", 
     "collision", "derailment", "disease", "virus", "outbreak", "cancer", "covid", "ebola", 
-    "cholera", "malaria", "dengue", "famine", "drought", "movie", "film", "game", "trailer", 
-    "simulation", "anniversary", "zombie", "actor", "hollywood", "fiction"
+    "cholera", "malaria", "dengue", "famine", "drought",
+    
+    # Disastri Naturali (Spagnolo, Francese, Italiano)
+    "terremoto", "terremotos", "sismo", "inundacion", "inondation", "ouragan", "séisme", "seisme", "alluvione",
+    
+    # Intrattenimento e Fake News
+    "movie", "film", "game", "trailer", "simulation", "anniversary", "zombie", "actor", "hollywood", "fiction",
+    
+    # Burocrazia, Riassunti Logistici e Tracciamento Profughi (Che generano falsi positivi)
+    "displacement", "refugee", "unicef", "ifrc", "council", "meeting", "procedimiento", "procedure", 
+    "hospital", "brief", "briefing", "session", "resolution", "funding", "donor", "appeal", "tracking",
+    "overview", "response plan", "standard operating", "rescuers"
 ]
 
 # --- 1. CONFIGURAZIONE DATABASE ---
@@ -38,6 +49,7 @@ def genera_id(data, lat, lon, titolo=""):
     titolo_pulito = "".join(e for e in titolo[:10] if e.isalnum())
     return f"{data}_{round(float(lat), 2)}_{round(float(lon), 2)}_{titolo_pulito}"
 
+# DIZIONARIO GLOBALE - 195 STATI
 DIZIONARIO_STATI = {
     "afghanistan": {"lat": 33.93, "lon": 67.70, "paese": "Afghanistan"}, "albania": {"lat": 41.15, "lon": 20.16, "paese": "Albania"},
     "algeria": {"lat": 28.03, "lon": 1.65, "paese": "Algeria"}, "andorra": {"lat": 42.50, "lon": 1.52, "paese": "Andorra"},
@@ -117,7 +129,7 @@ try:
         for entry in feed.entries[:25]:
             testo = (entry.title + " " + getattr(entry, 'summary', '')).lower()
             
-            # Applichiamo lo Scudo Anti-Disastri
+            # Applichiamo lo Scudo Anti-Disastri e Anti-Burocrazia
             if "?" in entry.title or any(word in testo for word in PAROLE_VIETATE): 
                 continue
             
@@ -162,7 +174,8 @@ try:
         "sort": "datedesc"
     }
     
-    req_gdelt = requests.get("https://api.gdeltproject.org/api/v2/doc/doc", params=params, headers=headers, timeout=15)
+    # Timeout allungato a 45 secondi per superare i blocchi di rete
+    req_gdelt = requests.get("https://api.gdeltproject.org/api/v2/doc/doc", params=params, headers=headers, timeout=45)
     
     if req_gdelt.status_code == 200:
         articoli = req_gdelt.json().get('articles', [])
@@ -171,7 +184,7 @@ try:
             titolo = art.get('title', '')
             titolo_lower = titolo.lower()
             
-            # Applichiamo lo Scudo Anti-Disastri anche qui
+            # Applichiamo lo Scudo Anti-Disastri e Anti-Burocrazia anche qui
             if "?" in titolo or any(word in titolo_lower for word in PAROLE_VIETATE):
                 continue
 
@@ -204,6 +217,8 @@ except Exception as e:
 if nuove_righe:
     sheet.append_rows(nuove_righe)
     print(f"Scrittura di {len(nuove_righe)} eventi sul database.")
+else:
+    print("Nessun nuovo evento ha superato tutti i filtri.")
 
 # --- 5. PULIZIA AUTOMATICA (7 Giorni solo per IN ATTESA) ---
 try:

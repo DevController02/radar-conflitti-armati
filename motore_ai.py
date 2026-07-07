@@ -7,7 +7,17 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import re
 
-print("--- Avvio Radar OSINT Globale 100% Open Source (ONU + GDELT) ---")
+print("--- Avvio Radar OSINT Globale (Con Scudo Anti-Calamità Naturali) ---")
+
+# --- LISTA NERA: SCUDO ANTI-DISASTRI E ANTI-INCIDENTI ---
+# Qualsiasi notizia che contenga una di queste parole verrà scartata immediatamente.
+PAROLE_VIETATE = [
+    "quake", "earthquake", "tsunami", "flood", "hurricane", "storm", "cyclone", "typhoon", "tornado",
+    "landslide", "mudslide", "volcano", "eruption", "wildfire", "fire", "accident", "crash", 
+    "collision", "derailment", "disease", "virus", "outbreak", "cancer", "covid", "ebola", 
+    "cholera", "malaria", "dengue", "famine", "drought", "movie", "film", "game", "trailer", 
+    "simulation", "anniversary", "zombie", "actor", "hollywood", "fiction"
+]
 
 # --- 1. CONFIGURAZIONE DATABASE ---
 try:
@@ -28,7 +38,6 @@ def genera_id(data, lat, lon, titolo=""):
     titolo_pulito = "".join(e for e in titolo[:10] if e.isalnum())
     return f"{data}_{round(float(lat), 2)}_{round(float(lon), 2)}_{titolo_pulito}"
 
-# DIZIONARIO GLOBALE - 195 STATI
 DIZIONARIO_STATI = {
     "afghanistan": {"lat": 33.93, "lon": 67.70, "paese": "Afghanistan"}, "albania": {"lat": 41.15, "lon": 20.16, "paese": "Albania"},
     "algeria": {"lat": 28.03, "lon": 1.65, "paese": "Algeria"}, "andorra": {"lat": 42.50, "lon": 1.52, "paese": "Andorra"},
@@ -95,22 +104,22 @@ DIZIONARIO_STATI = {
     "yemen": {"lat": 15.55, "lon": 48.51, "paese": "Yemen"}, "zimbabwe": {"lat": -19.01, "lon": 29.15, "paese": "Zimbabwe"}
 }
 
-# --- 2. MOTORE ISTITUZIONALE ONU (Dato Certo: 🔴 CONFERMATO) ---
+# --- 2. MOTORE ISTITUZIONALE ONU ---
 print("Scansione fonti ufficiali Nazioni Unite / ReliefWeb...")
 FONTI_ONU = [
     "https://reliefweb.int/updates/rss.xml",
     "https://news.un.org/feed/subscribe/en/news/all/rss.xml"
 ]
 
-eventi_onu_accettati = 0
 try:
     for url in FONTI_ONU:
         feed = feedparser.parse(url)
         for entry in feed.entries[:25]:
             testo = (entry.title + " " + getattr(entry, 'summary', '')).lower()
             
-            # Filtri di base
-            if "?" in entry.title or "anniversary" in testo: continue
+            # Applichiamo lo Scudo Anti-Disastri
+            if "?" in entry.title or any(word in testo for word in PAROLE_VIETATE): 
+                continue
             
             vittime = 0
             match = re.search(r'(\d+)', testo)
@@ -135,19 +144,18 @@ try:
                     titolo_breve = entry.title[:70] + "..."
                     nuove_righe.append([uid, datetime.now().strftime("%Y-%m-%d"), titolo_breve, vittime, lat, lon, paese_rilevato, "🔴 CONFERMATO"])
                     ids_esistenti.append(uid)
-                    eventi_onu_accettati += 1
-    print(f"Report ONU completato: {eventi_onu_accettati} notizie confermate aggiunte.")
 except Exception as e:
     print(f"Errore lettura feed ONU: {e}")
 
-# --- 3. MOTORE GDELT AI (Allerta Rapida: 🟠 IN ATTESA) ---
+# --- 3. MOTORE GDELT AI (Allerta Rapida) ---
 print("Scansione GDELT AI (Rete a strascico mondiale)...")
 try:
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
+    # Aggiunti termini militari per forzare GDELT a cercare SOLO violenza cinetica
     params = {
-        "query": "(killed OR casualties OR fatalities OR dead OR deaths OR morts OR vittime) (attack OR strike OR clash OR armed OR bombing OR military)",
+        "query": "(killed OR casualties OR fatalities OR dead OR deaths) (attack OR strike OR clash OR armed OR bombing OR military OR combat OR gunfire OR artillery)",
         "mode": "artlist",
         "maxrecords": "50",
         "format": "json",
@@ -155,19 +163,16 @@ try:
     }
     
     req_gdelt = requests.get("https://api.gdeltproject.org/api/v2/doc/doc", params=params, headers=headers, timeout=15)
-    print(f"GDELT Status Code: {req_gdelt.status_code}")
     
     if req_gdelt.status_code == 200:
         articoli = req_gdelt.json().get('articles', [])
-        print(f"GDELT: trovate {len(articoli)} notizie mondiali grezze negli ultimi 15 min.")
         
-        eventi_gdelt_accettati = 0
         for art in articoli:
             titolo = art.get('title', '')
             titolo_lower = titolo.lower()
             
-            # Scudi Anti-Fake News
-            if "?" in titolo or any(word in titolo_lower for word in ["movie", "film", "game", "trailer", "simulation", "anniversary", "zombie", "actor"]):
+            # Applichiamo lo Scudo Anti-Disastri anche qui
+            if "?" in titolo or any(word in titolo_lower for word in PAROLE_VIETATE):
                 continue
 
             vittime = 0
@@ -192,23 +197,15 @@ try:
                     titolo_breve = titolo[:70] + "..."
                     nuove_righe.append([uid, datetime.now().strftime("%Y-%m-%d"), titolo_breve, vittime, lat, lon, paese_rilevato, "🟠 IN ATTESA"])
                     ids_esistenti.append(uid)
-                    eventi_gdelt_accettati += 1
-                    
-        print(f"Filtro GDELT completato: {eventi_gdelt_accettati} allerte andranno sulla mappa.")
-    else:
-        print("GDELT bloccato o non raggiungibile.")
 except Exception as e:
     print(f"Errore GDELT: {e}")
 
 # --- 4. SALVATAGGIO ---
 if nuove_righe:
     sheet.append_rows(nuove_righe)
-    print(f"SUCCESSO TOTALE: Scrittura di {len(nuove_righe)} eventi sul database.")
-else:
-    print("Nessun nuovo evento ha superato tutti i filtri. Radar pulito.")
+    print(f"Scrittura di {len(nuove_righe)} eventi sul database.")
 
 # --- 5. PULIZIA AUTOMATICA (7 Giorni solo per IN ATTESA) ---
-print("Esecuzione pulizia database...")
 try:
     dati_foglio = sheet.get_all_values()
     oggi = datetime.now()
@@ -222,6 +219,4 @@ try:
             except: pass
     for riga in sorted(righe_da_eliminare, reverse=True):
         sheet.delete_rows(riga)
-    print("Pulizia terminata.")
-except Exception as e: 
-    print(f"Errore durante pulizia: {e}")
+except: pass

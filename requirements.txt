@@ -4,4 +4,3 @@ pydeck
 gspread
 oauth2client
 feedparser
-geopy

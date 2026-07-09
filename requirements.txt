@@ -4,3 +4,4 @@ pydeck
 gspread
 oauth2client
 feedparser
+google-genai

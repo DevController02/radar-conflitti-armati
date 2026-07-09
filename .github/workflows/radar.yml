@@ -25,6 +25,7 @@ jobs:
 
     - name: Avvia il motore AI OSINT
       env:
+        PYTHONUNBUFFERED: "1"
         GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: python motore_ai.py

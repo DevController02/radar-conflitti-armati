@@ -10,7 +10,7 @@ import time
 from google import genai
 from google.genai import types
 
-print("--- Avvio Radar OSINT Globale: VALIDAZIONE COGNITIVA AI (195 Stati) ---")
+print("--- Avvio Radar OSINT Globale: VALIDAZIONE COGNITIVA ESTREMA (195 Stati) ---")
 
 # --- INIZIALIZZAZIONE INTELLIGENZA ARTIFICIALE GEMINI ---
 try:
@@ -24,24 +24,26 @@ except Exception as e:
     exit()
 
 def analizza_notizia_con_ai(titolo, sommario=""):
-    """Invia il testo a Gemini per scartare falsi positivi (terremoti, burocrazia, etc.)"""
+    """Invia il testo a Gemini per estrarre le vittime e scartare disastri, incidenti e malattie."""
     prompt = f"""
-    Sei un analista geopolitico esperto in OSINT. Analizza questo testo:
+    Sei un analista geopolitico militare spietato. Analizza questo testo:
     TITOLO: {titolo}
     SOMMARIO: {sommario}
     
-    Rispondi SOLO in formato JSON esatto:
+    Rispondi SOLO in formato JSON esatto con questa struttura:
     {{
         "conflitto_armato_cinetico": true/false,
+        "disastro_incidente_malattia": true/false,
         "vittime_reali_ed_esplicite": true/false,
-        "evento_odierno": true/false,
+        "numero_vittime_estratto": <numero intero>,
         "motivazione": "breve spiegazione"
     }}
     
-    REGOLE:
-    1. conflitto_armato_cinetico: TRUE solo per guerra, terrorismo, scontri armati, raid. FALSE per disastri naturali (terremoti, alluvioni), incidenti, malattie, burocrazia, report ONU, displacement, profughi.
-    2. vittime_reali_ed_esplicite: TRUE solo se ci sono morti/feriti causati DIRETTAMENTE dall'azione.
-    3. evento_odierno: TRUE solo se il fatto è recente. FALSE se è un anniversario, un bilancio storico/annuale, o un appello per fondi.
+    REGOLE FERREE:
+    1. disastro_incidente_malattia: DEVE essere TRUE se il testo cita terremoti, calamità naturali, uragani, alluvioni, incidenti (aerei, stradali, navali, crolli), malattie (colera, epidemie, virus) o emergenze sanitarie.
+    2. conflitto_armato_cinetico: TRUE SOLO per guerra, terrorismo, scontri a fuoco, bombardamenti militari odierni. Se 'disastro_incidente_malattia' è TRUE, questo parametro DEVE essere forzato a FALSE.
+    3. vittime_reali_ed_esplicite: TRUE solo se ci sono morti causati DIRETTAMENTE dall'azione militare.
+    4. numero_vittime_estratto: Estrai il numero esatto di morti. Se dice "dozzine", scrivi 12. Se dice "centinaia", scrivi 100. Se non ci sono numeri chiari ma si parla esplicitamente di vittime letali, scrivi 1.
     """
     try:
         response = client_ai.models.generate_content(
@@ -49,16 +51,24 @@ def analizza_notizia_con_ai(titolo, sommario=""):
             contents=prompt,
             config=types.GenerateContentConfig(response_mime_type="application/json")
         )
-        valutazione = json.loads(response.text)
+        val = json.loads(response.text)
         
-        if valutazione.get("conflitto_armato_cinetico") and valutazione.get("vittime_reali_ed_esplicite") and valutazione.get("evento_odierno"):
-            return True, valutazione.get("motivazione")
+        # LA GHIGLIOTTINA LOGICA POTENZIATA
+        # Se è un terremoto, uragano, incidente o malattia, la notizia muore qui.
+        if val.get("disastro_incidente_malattia") == True:
+            return False, 0, f"Scartato: {val.get('motivazione')}"
+            
+        # Altrimenti, valuta se è un VERO attacco armato con vittime
+        if val.get("conflitto_armato_cinetico") and val.get("vittime_reali_ed_esplicite"):
+            vittime = int(val.get("numero_vittime_estratto", 1))
+            return True, vittime, val.get("motivazione")
         else:
-            return False, valutazione.get("motivazione")
+            return False, 0, f"Non militare o zero vittime: {val.get('motivazione')}"
+            
     except Exception as e:
-        return False, f"Errore AI: {str(e)}"
+        return False, 0, f"Errore AI: {str(e)}"
 
-# --- CONFIGURAZIONE DATABASE ---
+# --- CONFIGURAZIONE DATABASE E DIZIONARIO ---
 try:
     SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = json.loads(os.environ.get("GOOGLE_CREDENTIALS"))
@@ -266,20 +276,11 @@ DIZIONARIO_STATI = {
     "tuvalu": {"lat": -7.10, "lon": 177.64, "paese": "Tuvalu"},
     "uganda": {"lat": 1.37, "lon": 32.29, "paese": "Uganda"},
     "ukraine": {"lat": 48.37, "lon": 31.16, "paese": "Ukraine"},
-    "united arab emirates": {"lat": 23.42, "lon": 53.84, "paese": "United Arab Emirates"},
-    "united kingdom": {"lat": 55.37, "lon": -3.43, "paese": "United Kingdom"},
-    "uk": {"lat": 55.37, "lon": -3.43, "paese": "United Kingdom"},
-    "united states": {"lat": 37.09, "lon": -95.71, "paese": "United States"},
-    "usa": {"lat": 37.09, "lon": -95.71, "paese": "United States"},
-    "uruguay": {"lat": -32.52, "lon": -55.76, "paese": "Uruguay"},
-    "uzbekistan": {"lat": 41.37, "lon": 64.58, "paese": "Uzbekistan"},
-    "vanuatu": {"lat": -15.37, "lon": 166.95, "paese": "Vanuatu"},
-    "vatican city": {"lat": 41.90, "lon": 12.45, "paese": "Vatican City"},
-    "venezuela": {"lat": 6.42, "lon": -66.58, "paese": "Venezuela"},
-    "vietnam": {"lat": 14.05, "lon": 108.27, "paese": "Vietnam"},
-    "yemen": {"lat": 15.55, "lon": 48.51, "paese": "Yemen"},
-    "zambia": {"lat": -13.13, "lon": 27.84, "paese": "Zambia"},
-    "zimbabwe": {"lat": -19.01, "lon": 29.15, "paese": "Zimbabwe"}
+    "united arab emirates": {"lat": 23.42, "lon": 53.84, "paese": "United Arab Emirates"}, 
+    "united kingdom": {"lat": 55.37, "lon": -3.43, "paese": "United Kingdom"}, "uk": {"lat": 55.37, "lon": -3.43, "paese": "United Kingdom"},
+    "united states": {"lat": 37.09, "lon": -95.71, "paese": "United States"}, "usa": {"lat": 37.09, "lon": -95.71, "paese": "United States"},
+    "venezuela": {"lat": 6.42, "lon": -66.58, "paese": "Venezuela"}, "vietnam": {"lat": 14.05, "lon": 108.27, "paese": "Vietnam"},
+    "yemen": {"lat": 15.55, "lon": 48.51, "paese": "Yemen"}, "zimbabwe": {"lat": -19.01, "lon": 29.15, "paese": "Zimbabwe"}
 }
 
 # --- MOTORE ISTITUZIONALE ONU ---
@@ -292,7 +293,7 @@ try:
         for entry in feed.entries[:10]:
             testo = (entry.title + " " + getattr(entry, 'summary', '')).lower()
             
-            # Filtro rapido base per evitare chiamate inutili all'AI
+            # Filtro rapido base per evitare chiamate inutili all'AI (deve citare decessi)
             if not any(w in testo for w in ["killed", "dead", "vittime", "morti", "casualties", "deaths"]):
                 continue
                 
@@ -306,16 +307,12 @@ try:
                 uid = genera_id(datetime.now().strftime("%Y-%m-%d"), lat, lon, entry.title)
                 if uid not in ids_esistenti:
                     print(f"Sottopongo all'AI (ONU): {entry.title}")
-                    approvato, motivazione = analizza_notizia_con_ai(entry.title, getattr(entry, 'summary', ''))
+                    approvato, conteggio_vittime, motivazione = analizza_notizia_con_ai(entry.title, getattr(entry, 'summary', ''))
                     time.sleep(3) # Pausa di cortesia per limiti API
                     
                     if approvato:
-                        vittime = 1
-                        match = re.search(r'(\d+)\s*(killed|dead|morti|casualties)', testo)
-                        if match: vittime = int(match.group(1))
-                        
                         titolo_breve = entry.title[:70] + "..."
-                        nuove_righe.append([uid, datetime.now().strftime("%Y-%m-%d"), titolo_breve, vittime, lat, lon, paese_rilevato, "🔴 CONFERMATO"])
+                        nuove_righe.append([uid, datetime.now().strftime("%Y-%m-%d"), titolo_breve, conteggio_vittime, lat, lon, paese_rilevato, "🔴 CONFERMATO"])
                         ids_esistenti.append(uid)
                     else:
                         print(f"❌ Scartato dall'AI: {motivazione}")
@@ -339,44 +336,4 @@ try:
             titolo = art.get('title', '')
             titolo_lower = titolo.lower()
                 
-            lat, lon, paese_rilevato = None, None, None
-            for chiave, dati_geo in DIZIONARIO_STATI.items():
-                if re.search(r'\b' + re.escape(chiave) + r'\b', titolo_lower):
-                    lat, lon, paese_rilevato = dati_geo["lat"], dati_geo["lon"], dati_geo["paese"]
-                    break
-
-            if lat is not None and lon is not None:
-                uid = genera_id(datetime.now().strftime("%Y-%m-%d"), lat, lon, titolo)
-                if uid not in ids_esistenti:
-                    print(f"Sottopongo all'AI (GDELT): {titolo}")
-                    approvato, motivazione = analizza_notizia_con_ai(titolo)
-                    time.sleep(3) # Pausa di cortesia per limiti API
-                    
-                    if approvato:
-                        vittime = 1
-                        match = re.search(r'(\d+)', titolo_lower)
-                        if match: vittime = int(match.group(1))
-                        if vittime > 1000: continue
-                        
-                        titolo_breve = titolo[:70] + "..."
-                        nuove_righe.append([uid, datetime.now().strftime("%Y-%m-%d"), titolo_breve, vittime, lat, lon, paese_rilevato, "🟠 IN ATTESA"])
-                        ids_esistenti.append(uid)
-                    else:
-                        print(f"❌ Scartato dall'AI: {motivazione}")
-except Exception as e:
-    print(f"Errore GDELT: {e}")
-
-# --- SALVATAGGIO ---
-if nuove_righe:
-    sheet.append_rows(nuove_righe)
-    print(f"🎯 VALIDAZIONE CONCLUSA: Salvati {len(nuove_righe)} eventi confermati e verificati.")
-else:
-    print("Nessun nuovo evento ha superato i rigidi controlli dell'AI in questo ciclo.")
-
-# --- PULIZIA AUTOMATICA ---
-try:
-    dati_foglio = sheet.get_all_values()
-    oggi = datetime.now()
-    righe_da_eliminare = sorted([i + 1 for i, r in enumerate(dati_foglio) if i > 0 and len(r) >= 8 and "IN ATTESA" in r[7] and (oggi - datetime.strptime(r[1], "%Y-%m-%d")).days > 7], reverse=True)
-    for riga in righe_da_eliminare: sheet.delete_rows(riga)
-except: pass
+            la

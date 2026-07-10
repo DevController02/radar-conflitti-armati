@@ -24,7 +24,7 @@ except Exception as e:
     exit()
 
 def analizza_notizia_con_ai(titolo, sommario=""):
-    """Invia il testo a Gemini per estrarre le vittime e scartare disastri, incidenti e malattie."""
+    """Invia il testo a Gemini per estrarre le vittime e scartare disastri, malattie ed eventi storici."""
     prompt = f"""
     Sei un analista geopolitico militare spietato. Analizza questo testo:
     TITOLO: {titolo}
@@ -34,6 +34,7 @@ def analizza_notizia_con_ai(titolo, sommario=""):
     {{
         "conflitto_armato_cinetico": true/false,
         "disastro_incidente_malattia": true/false,
+        "evento_storico_passato": true/false,
         "vittime_reali_ed_esplicite": true/false,
         "numero_vittime_estratto": <numero intero>,
         "motivazione": "breve spiegazione"
@@ -41,9 +42,10 @@ def analizza_notizia_con_ai(titolo, sommario=""):
     
     REGOLE FERREE:
     1. disastro_incidente_malattia: DEVE essere TRUE se il testo cita terremoti, calamità naturali, uragani, alluvioni, incidenti (aerei, stradali, navali, crolli), malattie (colera, epidemie, virus) o emergenze sanitarie.
-    2. conflitto_armato_cinetico: TRUE SOLO per guerra, terrorismo, scontri a fuoco, bombardamenti militari odierni. Se 'disastro_incidente_malattia' è TRUE, questo parametro DEVE essere forzato a FALSE.
-    3. vittime_reali_ed_esplicite: TRUE solo se ci sono morti causati DIRETTAMENTE dall'azione militare.
-    4. numero_vittime_estratto: Estrai il numero esatto di morti. Se dice "dozzine", scrivi 12. Se dice "centinaia", scrivi 100. Se non ci sono numeri chiari ma si parla esplicitamente di vittime letali, scrivi 1.
+    2. evento_storico_passato: DEVE essere TRUE se l'evento è accaduto mesi o anni fa, se si tratta di una commemorazione, di un anniversario, di un bilancio storico (es. Srebrenica, guerre passate) o di un resoconto cumulativo pluriennale.
+    3. conflitto_armato_cinetico: TRUE SOLO per guerra, terrorismo, scontri a fuoco, raid e bombardamenti militari accaduti nelle ultime 24-48 ore. Se 'disastro_incidente_malattia' è TRUE oppure 'evento_storico_passato' è TRUE, questo parametro DEVE essere forzato a FALSE.
+    4. vittime_reali_ed_esplicite: TRUE solo se ci sono morti causati DIRETTAMENTE dall'azione militare recente.
+    5. numero_vittime_estratto: Estrai il numero esatto di morti dell'attacco recente. Se dice "dozzine", scrivi 12. Se dice "centinaia", scrivi 100. Se l'evento è storico o non ci sono numeri chiari, scrivi 0.
     """
     try:
         response = client_ai.models.generate_content(
@@ -53,17 +55,17 @@ def analizza_notizia_con_ai(titolo, sommario=""):
         )
         val = json.loads(response.text)
         
-        # LA GHIGLIOTTINA LOGICA POTENZIATA
-        # Se è un terremoto, uragano, incidente o malattia, la notizia muore qui.
-        if val.get("disastro_incidente_malattia") == True:
+        # LA GHIGLIOTTINA LOGICA
+        # Se è un disastro, una malattia O un evento storico del passato, la notizia muore qui.
+        if val.get("disastro_incidente_malattia") == True or val.get("evento_storico_passato") == True:
             return False, 0, f"Scartato: {val.get('motivazione')}"
             
-        # Altrimenti, valuta se è un VERO attacco armato con vittime
+        # Altrimenti, valuta se è un VERO attacco armato RECENTE con vittime
         if val.get("conflitto_armato_cinetico") and val.get("vittime_reali_ed_esplicite"):
             vittime = int(val.get("numero_vittime_estratto", 1))
             return True, vittime, val.get("motivazione")
         else:
-            return False, 0, f"Non militare o zero vittime: {val.get('motivazione')}"
+            return False, 0, f"Non militare o zero vittime recenti: {val.get('motivazione')}"
             
     except Exception as e:
         return False, 0, f"Errore AI: {str(e)}"
@@ -279,8 +281,15 @@ DIZIONARIO_STATI = {
     "united arab emirates": {"lat": 23.42, "lon": 53.84, "paese": "United Arab Emirates"}, 
     "united kingdom": {"lat": 55.37, "lon": -3.43, "paese": "United Kingdom"}, "uk": {"lat": 55.37, "lon": -3.43, "paese": "United Kingdom"},
     "united states": {"lat": 37.09, "lon": -95.71, "paese": "United States"}, "usa": {"lat": 37.09, "lon": -95.71, "paese": "United States"},
-    "venezuela": {"lat": 6.42, "lon": -66.58, "paese": "Venezuela"}, "vietnam": {"lat": 14.05, "lon": 108.27, "paese": "Vietnam"},
-    "yemen": {"lat": 15.55, "lon": 48.51, "paese": "Yemen"}, "zimbabwe": {"lat": -19.01, "lon": 29.15, "paese": "Zimbabwe"}
+    "uruguay": {"lat": -32.52, "lon": -55.76, "paese": "Uruguay"},
+    "uzbekistan": {"lat": 41.37, "lon": 64.58, "paese": "Uzbekistan"},
+    "vanuatu": {"lat": -15.37, "lon": 166.95, "paese": "Vanuatu"},
+    "vatican city": {"lat": 41.90, "lon": 12.45, "paese": "Vatican City"},
+    "venezuela": {"lat": 6.42, "lon": -66.58, "paese": "Venezuela"},
+    "vietnam": {"lat": 14.05, "lon": 108.27, "paese": "Vietnam"},
+    "yemen": {"lat": 15.55, "lon": 48.51, "paese": "Yemen"},
+    "zambia": {"lat": -13.13, "lon": 27.84, "paese": "Zambia"},
+    "zimbabwe": {"lat": -19.01, "lon": 29.15, "paese": "Zimbabwe"}
 }
 
 # --- MOTORE ISTITUZIONALE ONU ---
@@ -293,7 +302,6 @@ try:
         for entry in feed.entries[:10]:
             testo = (entry.title + " " + getattr(entry, 'summary', '')).lower()
             
-            # Filtro rapido base per evitare chiamate inutili all'AI (deve citare decessi)
             if not any(w in testo for w in ["killed", "dead", "vittime", "morti", "casualties", "deaths"]):
                 continue
                 
@@ -308,11 +316,14 @@ try:
                 if uid not in ids_esistenti:
                     print(f"Sottopongo all'AI (ONU): {entry.title}")
                     approvato, conteggio_vittime, motivazione = analizza_notizia_con_ai(entry.title, getattr(entry, 'summary', ''))
-                    time.sleep(3) # Pausa di cortesia per limiti API
+                    time.sleep(3)
                     
                     if approvato:
+                        # PROTEZIONE GRAFICA: Applichiamo il Tetto Massimo di 100 per non far esplodere la mappa
+                        vittime_fissate = min(conteggio_vittime, 100)
+                        
                         titolo_breve = entry.title[:70] + "..."
-                        nuove_righe.append([uid, datetime.now().strftime("%Y-%m-%d"), titolo_breve, conteggio_vittime, lat, lon, paese_rilevato, "🔴 CONFERMATO"])
+                        nuove_righe.append([uid, datetime.now().strftime("%Y-%m-%d"), titolo_breve, vittime_fissate, lat, lon, paese_rilevato, "🔴 CONFERMATO"])
                         ids_esistenti.append(uid)
                     else:
                         print(f"❌ Scartato dall'AI: {motivazione}")
@@ -347,11 +358,14 @@ try:
                 if uid not in ids_esistenti:
                     print(f"Sottopongo all'AI (GDELT): {titolo}")
                     approvato, conteggio_vittime, motivazione = analizza_notizia_con_ai(titolo)
-                    time.sleep(3) # Pausa di cortesia per limiti API
+                    time.sleep(3)
                     
-                    if approvato and conteggio_vittime <= 1000:
+                    if approvato:
+                        # PROTEZIONE GRAFICA: Applichiamo il Tetto Massimo di 100 per non far esplodere la mappa
+                        vittime_fissate = min(conteggio_vittime, 100)
+                        
                         titolo_breve = titolo[:70] + "..."
-                        nuove_righe.append([uid, datetime.now().strftime("%Y-%m-%d"), titolo_breve, conteggio_vittime, lat, lon, paese_rilevato, "🟠 IN ATTESA"])
+                        nuove_righe.append([uid, datetime.now().strftime("%Y-%m-%d"), titolo_breve, vittime_fissate, lat, lon, paese_rilevato, "🟠 IN ATTESA"])
                         ids_esistenti.append(uid)
                     else:
                         print(f"❌ Scartato dall'AI: {motivazione}")

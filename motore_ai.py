@@ -336,4 +336,3 @@ try:
             titolo = art.get('title', '')
             titolo_lower = titolo.lower()
                 
-            la
